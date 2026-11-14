@@ -368,20 +368,6 @@ const navButtons = [...document.querySelectorAll('#nav button')];
 let current = -1;
 
 const hex = n => '#' + n.toString(16).padStart(6, '0');
-function renderInfo() {
-  if (current < 0) {
-    info.innerHTML = `
-      <h2>Quattro laghi, quattro Narcisi</h2>
-      <div class="tag">Panoramica</div>
-      <dl>
-        <dt>Le scatole</dt><dd>Quattro scatole identiche all’esterno, 45 × 45 cm, alte 40. La differenza esiste solo quando ti affacci.</dd>
-        <dt>Il gesto</dt><dd>Chi guarda si china sulla scatola come Narciso sul lago e si vede riflesso sul fondo.</dd>
-        <dt>La falda</dt><dd>Un cornicione di cartone lungo il bordo interno nasconde le luci, che illuminano il viso di chi si affaccia e non si vedono nello specchio.</dd>
-        <dt>Il nome</dt><dd>L’emozione è scritta al contrario sulla parete interna: si legge giusta solo nel riflesso.</dd>
-      </dl>
-      <div class="hint">Trascina per ruotare, rotella o pizzico per lo zoom. Scegli una scatola dai pulsanti in alto.</div>`;
-    return;
-  }
   const b = BOXES[current];
   info.innerHTML = `
     <h2>${current + 1} · ${b.name}</h2>
