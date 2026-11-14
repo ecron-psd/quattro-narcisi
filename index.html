@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I quattro Narcisi</title>
+<style>
+  :root {
+    --bg: #0e0d0c;
+    --panel: rgba(22, 20, 18, 0.88);
+    --line: rgba(255, 255, 255, 0.12);
+    --text: #ece6dc;
+    --muted: #a39a8c;
+    --accent: #e8c38a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: Georgia, "Times New Roman", serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+  header { position: fixed; top: 16px; left: 16px; right: 16px; pointer-events: none; }
+  header h1 { margin: 0; font-weight: normal; font-size: 26px; letter-spacing: 0.02em; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; font-style: italic; }
+
+  nav { position: fixed; top: 84px; left: 16px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100vw - 32px); }
+  nav button, .toggles button {
+    font: 13px/1 system-ui, sans-serif; color: var(--text); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; cursor: pointer;
+  }
+  nav button.active { background: var(--accent); color: #1a1612; border-color: var(--accent); }
+  nav button:focus-visible, .toggles button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .toggles { position: fixed; top: 124px; left: 16px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggles button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+  .label { position: fixed; transform: translate(-50%, -100%); pointer-events: none; font-size: 13px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); text-shadow: 0 1px 6px #000; white-space: nowrap; }
+
+  @media (max-width: 720px) {
+    header h1 { font-size: 21px; }
+    nav { top: 72px; }
+    .toggles { top: 150px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<header>
+  <h1>I quattro Narcisi</h1>
+  <p>Il falso è la percezione di noi stessi filtrata dalle emozioni.</p>
+</header>
+
+<nav id="nav">
+  <button data-i="-1" class="active">Panoramica</button>
+  <button data-i="0">1 · Rabbia</button>
+  <button data-i="1">2 · Stanchezza</button>
+  <button data-i="2">3 · Audacia</button>
+  <button data-i="3">4 · Follia</button>
+</nav>
+<div class="toggles">
+  <button id="tSection" aria-pressed="true">Vista in sezione</button>
+  <button id="tViewer" aria-pressed="true">Mostra chi si affaccia</button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ------------------------------------------------------------ contenuti
+const BOXES = [
+  { name: 'Rabbia', kind: 'Negativa', light: [0xff2a14, 0xff4a1a, 0xff2a14],
+    effetto: 'Un volto spezzato, rosso, instabile.',
+    superficie: 'Frammenti di specchio incollati sul fondo con inclinazioni diverse, alcuni rialzati con pezzetti di cartone. In alternativa: mattonelle a specchio adesive o coperta termica accartocciata.',
+    luce: 'Rossa e intensa, da sotto la falda, con carta crespa rossa. Una candela (in barattolo) rende il volto inquieto.' },
+  { name: 'Stanchezza', kind: 'Neutra', light: [0xbfd6ff, 0x9fbfff, 0xbfd6ff],
+    effetto: 'Ti vedi come sei, ma spento, lontano, come dietro un velo.',
+    superficie: 'Bacinella dipinta di nero all’interno, piena d’acqua, con uno specchio piano sul fondo: acqua e specchio danno un riflesso leggermente sdoppiato.',
+    luce: 'Bianca fredda, debole e diffusa: torcia coperta da carta da forno o crespa azzurrina.' },
+  { name: 'Audacia', kind: 'Positiva', light: [0xffb347, 0xffd27a, 0xffb347],
+    effetto: 'Ti vedi più grande, più vicino, luminoso.',
+    superficie: 'Specchio ingranditore da trucco (concavo) su uno zoccolo, per portarlo alla distanza giusta: troppo lontano, l’immagine si capovolge.',
+    luce: 'Calda e dorata, con carta crespa gialla o arancio.' },
+  { name: 'Follia', kind: 'Libera', light: [0x3b5bff, 0xb040ff, 0x30ff90],
+    effetto: 'Moltiplicato, capovolto, irriconoscibile.',
+    superficie: 'Palline di Natale (decine di te), cucchiai col lato concavo in su (immagine capovolta), CD (arcobaleni), occhiali a specchio. Pareti interne rivestite di Mylar.',
+    luce: 'Più colori insieme (blu, viola, verde) da più punti.' },
+];
+
+// ------------------------------------------------------------ scena
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0d0c);
+scene.fog = new THREE.Fog(0x0e0d0c, 30, 60);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+camera.position.set(0, 10, 19);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 1.5, 0);
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 3; controls.maxDistance = 40;
+
+const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+scene.add(new THREE.HemisphereLight(0xfff1dd, 0x1a1410, 0.35));
+const key = new THREE.DirectionalLight(0xfff0dc, 0.6);
+key.position.set(-6, 14, 10);
+scene.add(key);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshStandardMaterial({ color: 0x1a1816, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// ------------------------------------------------------------ materiali
+const mCard = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.92 });
+const mBlack = new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.95 });
+const mMirror = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.04, envMap: env, side: THREE.DoubleSide });
+const mMylar = new THREE.MeshStandardMaterial({ color: 0xd8dde4, metalness: 1, roughness: 0.28, envMap: env, envMapIntensity: 0.7 });
+const mSteel = new THREE.MeshStandardMaterial({ color: 0xcfd3d8, metalness: 1, roughness: 0.15, envMap: env });
+
+// unità: 1 = 10 cm. Scatola 45 x 40 x 45 cm
+const W = 4.5, H = 4, D = 4.5, T = 0.08, F = 0.6;
+const SPACING = 6.5;
+
+function box(w, h, d, mats, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
+  m.position.set(x, y, z);
+  return m;
+}
+// facce BoxGeometry: +x, -x, +y, -y, +z, -z
+function faces(inner, innerIdx) {
+  return [0, 1, 2, 3, 4, 5].map(i => (i === innerIdx ? inner : mCard));
+}
+
+function mirroredLabel(text) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ece6dc';
+  g.font = '600 56px Georgia, serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.translate(512, 0); g.scale(-1, 1); // scrittura speculare
+  g.fillText(text.toUpperCase(), 256, 50);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.49),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+}
+
+function rainbowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  let grad;
+  if (g.createConicGradient) {
+    grad = g.createConicGradient(0, 128, 128);
+    ['#ff6b6b', '#ffd93d', '#6bff95', '#6bd5ff', '#b06bff', '#ff6bd5', '#ff6b6b']
+      .forEach((col, i, a) => grad.addColorStop(i / (a.length - 1), col));
+  } else {
+    grad = g.createLinearGradient(0, 0, 256, 256);
+    grad.addColorStop(0, '#ff6b6b'); grad.addColorStop(0.5, '#6bd5ff'); grad.addColorStop(1, '#b06bff');
+  }
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#222'; g.beginPath(); g.arc(128, 128, 20, 0, Math.PI * 2); g.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// seme fisso, così il modello è sempre uguale
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const between = (a, b) => a + (b - a) * rnd();
+
+// ------------------------------------------------------------ costruzione
+const frontWalls = [];
+const flickers = [];
+const water = [];
+
+BOXES.forEach((cfg, i) => {
+  const g = new THREE.Group();
+  g.position.x = (i - 1.5) * SPACING;
+  scene.add(g);
+  cfg.group = g;
+
+  const inner = i === 3 ? mMylar : mBlack;
+  g.add(box(W, H, T, faces(inner, 4), 0, H / 2, -D / 2 + T / 2));            // retro
+  const front = box(W, H, T, faces(inner, 5), 0, H / 2, D / 2 - T / 2);       // fronte
+  g.add(front); frontWalls.push(front);
+  g.add(box(T, H, D, faces(inner, 0), -W / 2 + T / 2, H / 2, 0));            // sinistra
+  g.add(box(T, H, D, faces(inner, 1), W / 2 - T / 2, H / 2, 0));             // destra
+  g.add(box(W, T, D, faces(mBlack, 2), 0, T / 2, 0));                        // fondo
+
+  // falda interna che nasconde le luci
+  const fy = H - 0.03, ft = 0.06, iw = W - 2 * T, id = D - 2 * T;
+  const fm = [mBlack, mBlack, mCard, mBlack, mBlack, mBlack];
+  g.add(box(iw, ft, F, fm, 0, fy, -id / 2 + F / 2));
+  g.add(box(iw, ft, F, fm, 0, fy, id / 2 - F / 2));
+  g.add(box(F, ft, id - 2 * F, fm, -iw / 2 + F / 2, fy, 0));
+  g.add(box(F, ft, id - 2 * F, fm, iw / 2 - F / 2, fy, 0));
+
+  // nome dell'emozione, scritto al contrario sulla parete di fondo
+  const lab = mirroredLabel(cfg.name);
+  lab.position.set(0, H - 0.42, -D / 2 + T + 0.01);
+  g.add(lab);
+
+  // luci sotto la falda, puntate verso chi si affaccia
+  const lightPos = [[-1.55, H - 0.3, -1.55], [1.55, H - 0.3, -1.55], [0, H - 0.3, 1.55]];
+  lightPos.forEach((p, k) => {
+    const col = cfg.light[k];
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 8), new THREE.MeshBasicMaterial({ color: col }));
+    bulb.position.set(...p);
+    g.add(bulb);
+    const pl = new THREE.PointLight(col, i === 1 ? 6 : 14, 9, 2);
+    pl.position.set(p[0] * 0.8, p[1] - 0.15, p[2] * 0.8);
+    g.add(pl);
+    if (i === 0 && k === 2) flickers.push(pl);
+  });
+
+  const y0 = T;
+  if (i === 0) buildRabbia(g, y0);
+  if (i === 1) buildStanchezza(g, y0);
+  if (i === 2) buildAudacia(g, y0);
+  if (i === 3) buildFollia(g, y0);
+});
+
+function buildRabbia(g, y0) {
+  for (let k = 0; k < 18; k++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(between(0.45, 1.0), 0.03, between(0.35, 0.8)), mMirror);
+    s.position.set(between(-1.6, 1.6), y0 + between(0.05, 0.3), between(-1.6, 1.6));
+    s.rotation.set(between(-0.4, 0.4), between(0, Math.PI), between(-0.4, 0.4));
+    g.add(s);
+  }
+  // candela in barattolo
+  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.45, 24, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, roughness: 0.1 }));
+  jar.position.set(1.55, y0 + 0.23, 1.55);
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16), new THREE.MeshStandardMaterial({ color: 0xf2e8d5 }));
+  candle.position.set(1.55, y0 + 0.13, 1.55);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 12), new THREE.MeshBasicMaterial({ color: 0xffa040 }));
+  flame.position.set(1.55, y0 + 0.34, 1.55);
+  g.add(jar, candle, flame);
+}
+
+function buildStanchezza(g, y0) {
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.5, 0.55, 48, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6, side: THREE.DoubleSide }));
+  basin.position.y = y0 + 0.275;
+  const mirror = new THREE.Mesh(new THREE.CircleGeometry(1.4, 48), mMirror);
+  mirror.rotation.x = -Math.PI / 2; mirror.position.y = y0 + 0.02;
+  const geo = new THREE.RingGeometry(0.001, 1.66, 64, 14);
+  const surf = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: 0x0b1622, metalness: 0.2, roughness: 0.03, envMap: env, envMapIntensity: 0.8,
+    transparent: true, opacity: 0.72, side: THREE.DoubleSide }));
+  surf.rotation.x = -Math.PI / 2; surf.position.y = y0 + 0.45;
+  water.push(surf);
+  g.add(basin, mirror, surf);
+}
+
+function buildAudacia(g, y0) {
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.95, 1.5, 32), mCard);
+  ped.position.y = y0 + 0.75;
+  const R = 1.5, cap = 0.6;
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 16, 0, Math.PI * 2, Math.PI - cap, cap), mMirror);
+  bowl.position.y = y0 + 1.5 + R;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(Math.sin(cap) * R, 0.05, 8, 48),
+    new THREE.MeshStandardMaterial({ color: 0xd4af6a, metalness: 0.8, roughness: 0.3, envMap: env }));
+  rim.rotation.x = Math.PI / 2; rim.position.y = bowl.position.y - Math.cos(cap) * R;
+  g.add(ped, bowl, rim);
+}
+
+function buildFollia(g, y0) {
+  const tints = [0xffffff, 0xffd27a, 0xff6a6a, 0x7aa8ff, 0xc08bff, 0x7affc0];
+  for (let k = 0; k < 13; k++) {
+    const r = between(0.16, 0.34);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16),
+      new THREE.MeshStandardMaterial({ color: tints[k % tints.length], metalness: 1, roughness: 0.05, envMap: env }));
+    ball.position.set(between(-1.7, 1.7), y0 + r, between(-1.7, 1.7));
+    g.add(ball);
+  }
+  for (let k = 0; k < 4; k++) {
+    const spoon = new THREE.Group();
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mSteel);
+    bowl.scale.set(1, 0.45, 1.5);
+    bowl.position.y = 0.11;
+    mSteel.side = THREE.DoubleSide;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 1.1, 8), mSteel);
+    handle.rotation.x = Math.PI / 2 - 0.12; handle.position.set(0, 0.1, 0.85);
+    spoon.add(bowl, handle);
+    spoon.position.set(between(-1.4, 1.4), y0, between(-1.4, 1.4));
+    spoon.rotation.y = between(0, Math.PI * 2);
+    g.add(spoon);
+  }
+  const cdMat = [mSteel, new THREE.MeshStandardMaterial({ map: rainbowTexture(), metalness: 0.5, roughness: 0.15, envMap: env }), mSteel];
+  for (let k = 0; k < 3; k++) {
+    const cd = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.02, 48), cdMat);
+    cd.position.set(between(-1.2, 1.2), y0 + 0.05 + k * 0.03, between(-1.2, 1.2));
+    cd.rotation.set(between(-0.2, 0.2), between(0, 3), between(-0.2, 0.2));
+    g.add(cd);
+  }
+  // occhiali a specchio
+  const glasses = new THREE.Group();
+  [-0.28, 0.28].forEach(x => {
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.25, 24, 12, 0, Math.PI * 2, 0, 0.6), mMirror);
+    lens.scale.set(1, 0.5, 0.85); lens.position.x = x;
+    glasses.add(lens);
+  });
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.03, 0.03), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+  bridge.position.y = 0.05;
+  glasses.add(bridge);
+  glasses.position.set(0.6, y0 + 0.02, -1.2);
+  glasses.rotation.y = 0.5;
+  g.add(glasses);
+}
+
+// ------------------------------------------------------------ chi si affaccia
+const viewer = new THREE.Group();
+{
+  const skin = new THREE.MeshStandardMaterial({ color: 0xd8b494, roughness: 0.75 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.75, 32, 16), skin);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.78, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    new THREE.MeshStandardMaterial({ color: 0x2a1d14, roughness: 0.9 }));
+  hair.rotation.x = -0.5;
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.28, 12), skin);
+  nose.rotation.x = Math.PI / 2; nose.position.set(0, -0.05, 0.78);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.8, 16), skin);
+  neck.position.set(0, -0.2, -0.9); neck.rotation.x = Math.PI / 2 - 0.4;
+  const head3 = new THREE.Group();
+  head3.add(head, hair, nose, neck);
+  head3.rotation.x = Math.PI / 2 - 0.15; // il volto guarda in basso: il gesto di Narciso
+  viewer.add(head3);
+}
+const sight = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+  new THREE.LineDashedMaterial({ color: 0xe8c38a, dashSize: 0.18, gapSize: 0.12 }));
+scene.add(viewer, sight);
+
+// ------------------------------------------------------------ interfaccia
+const navButtons = [...document.querySelectorAll('#nav button')];
+let current = -1;
+
+const camGoal = new THREE.Vector3(), tgtGoal = new THREE.Vector3();
+let animating = true;
+function select(i) {
+  current = i;
+  navButtons.forEach(b => b.classList.toggle('active', +b.dataset.i === i));
+  if (i < 0) { tgtGoal.set(0, 1.5, 0); camGoal.set(0, 10, 19); }
+  else {
+    const x = BOXES[i].group.position.x;
+    tgtGoal.set(x, 1.4, 0); camGoal.set(x + 3.2, 7.5, 7.5);
+  }
+  animating = true;
+  updateViewer();
+}
+navButtons.forEach(b => b.addEventListener('click', () => select(+b.dataset.i)));
+controls.addEventListener('start', () => { animating = false; });
+
+let showViewer = true;
+function updateViewer() {
+  const on = showViewer && current >= 0;
+  viewer.visible = sight.visible = on;
+  if (!on) return;
+  const x = BOXES[current].group.position.x;
+  viewer.position.set(x, H + 1.35, 0.35);
+  const eyes = new THREE.Vector3(x, H + 0.65, 0.55);
+  const bottom = new THREE.Vector3(x, current === 2 ? 2.2 : 0.4, 0);
+  sight.geometry.setFromPoints([eyes, bottom]);
+  sight.computeLineDistances();
+}
+
+const tSection = document.getElementById('tSection');
+tSection.addEventListener('click', () => {
+  const on = tSection.getAttribute('aria-pressed') !== 'true';
+  tSection.setAttribute('aria-pressed', on);
+  tSection.textContent = on ? 'Vista in sezione' : 'Vista esterna';
+  frontWalls.forEach(w => (w.visible = !on));
+});
+frontWalls.forEach(w => (w.visible = false));
+
+const tViewer = document.getElementById('tViewer');
+tViewer.addEventListener('click', () => {
+  showViewer = !showViewer;
+  tViewer.setAttribute('aria-pressed', showViewer);
+  updateViewer();
+});
+
+// etichette sopra le scatole
+const labels = BOXES.map((b, i) => {
+  const el = document.createElement('div');
+  el.className = 'label';
+  el.textContent = `${i + 1} · ${b.name}`;
+  document.body.appendChild(el);
+  return el;
+});
+const tmp = new THREE.Vector3();
+function placeLabels() {
+  labels.forEach((el, i) => {
+    tmp.set(BOXES[i].group.position.x, H + 0.5, -D / 2).project(camera);
+    const vis = tmp.z < 1 && !(current === i && showViewer);
+    el.style.display = vis ? 'block' : 'none';
+    el.style.left = ((tmp.x + 1) / 2 * innerWidth) + 'px';
+    el.style.top = ((1 - tmp.y) / 2 * innerHeight) + 'px';
+  });
+}
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.fov = innerWidth < 720 ? 55 : 40;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+select(-1);
+
+// ------------------------------------------------------------ animazione
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  if (animating) {
+    camera.position.lerp(camGoal, 0.06);
+    controls.target.lerp(tgtGoal, 0.06);
+    if (camera.position.distanceTo(camGoal) < 0.02) animating = false;
+  }
+  flickers.forEach(l => (l.intensity = 12 + Math.sin(t * 13) * 2 + Math.sin(t * 7.3) * 2));
+  water.forEach(w => {
+    const pos = w.geometry.attributes.position;
+    for (let k = 0; k < pos.count; k++) {
+      const x = pos.getX(k), y = pos.getY(k);
+      const r = Math.hypot(x, y);
+      pos.setZ(k, 0.025 * Math.sin(r * 7 - t * 1.6) * (1 - r / 1.7));
+    }
+    pos.needsUpdate = true;
+    w.geometry.computeVertexNormals();
+  });
+  controls.update();
+  renderer.render(scene, camera);
+  placeLabels();
+});
+</script>
+</body>
+</html>
